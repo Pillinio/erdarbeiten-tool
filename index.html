@@ -25,11 +25,13 @@
   .full { grid-column: 1 / -1; }
   .btn { display:inline-flex; align-items:center; gap:8px; background:var(--accent); color:#fff; border:0; padding:10px 14px; border-radius:10px; font-size:14px; cursor:pointer; }
   .chart-panel { padding: 10px 14px; height: calc(100vh - 32px); }
-  #chart { width: 100%; height: calc(100% - 52px); }
+  #chart { width: 100%; height: calc(100% - 82px); }
   .header { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:8px; }
   .header h1 { font-size: 18px; margin:0; }
   .header .sub { color:#64748b; font-size:12px; }
   .help { font-size: 12px; color:#64748b; margin-top:6px; }
+  .kpis { display:flex; gap:16px; font-size:13px; color:#0f172a; margin:6px 0; }
+  .kpis .val { font-weight:600; }
 </style>
 <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
 </head>
@@ -41,7 +43,7 @@
         <div class="group">
           <div class="group-title">Projekt</div>
           <div class="row">
-            <label>Verkaufspreis (€/m³)<input id="salePrice" type="number" step="0.01" value="1.5"></label>
+            <label>€/cbm Aushub<input id="salePrice" type="number" step="0.01" value="1.5"></label>
             <label>Volumen (cbm)<input id="projectVolume" type="number" step="1" value="100000"></label>
             <label class="full">Projektfixkosten (€)<input id="projectFixed" type="number" step="1" value="0"></label>
           </div>
@@ -52,29 +54,32 @@
           <div class="group-title">Kosten</div>
           <div class="row">
             <label>Personal (€/h)<input id="personalHourly" type="number" step="0.01" value="22"></label>
-            <label>inkl. Personal<input id="includePersonal" type="checkbox" checked></label>
             <label>Std/Tag<input id="hoursPerDay" type="number" step="1" value="8"></label>
-            <label>Fixe €/Tag<input id="fixedDaily" type="number" step="1" value="0"></label>
           </div>
-          <label><input id="includeFixed" type="checkbox"> inkl. fixe Tageskosten</label>
           <label class="full">Effizienz (0.6–1.0)<input id="efficiency" type="number" step="0.01" min="0.6" max="1.0" value="1.0"></label>
         </div>
 
         <div class="group">
-          <div class="group-title">Maschinen & Bänder</div>
+          <div class="group-title">Maschinen</div>
           <div class="row">
-            <label>15t €/h<input id="m15" type="number" step="0.01" value="38.84"></label>
-            <label>20t €/h<input id="m20" type="number" step="0.01" value="42.53"></label>
-            <label>27t €/h<input id="m27" type="number" step="0.01" value="58.03"></label>
+            <label class="full">Maschine wählen
+              <select id="machineSelect"></select>
+            </label>
           </div>
           <div class="row">
-            <label>15t min (cbm/h)<input id="m15min" type="number" step="0.1" value="2.4"></label>
-            <label>15t max (cbm/h)<input id="m15max" type="number" step="0.1" value="100"></label>
-            <label>20t min (cbm/h)<input id="m20min" type="number" step="0.1" value="3"></label>
-            <label>20t max (cbm/h)<input id="m20max" type="number" step="0.1" value="125"></label>
-            <label>27t min (cbm/h)<input id="m27min" type="number" step="0.1" value="3.6"></label>
-            <label>27t max (cbm/h)<input id="m27max" type="number" step="0.1" value="150"></label>
+            <button id="addMachineBtn" class="btn" type="button">Maschine hinzufügen</button>
           </div>
+          <div class="row">
+            <label>€/h Gerät<input id="machineHourly" type="number" step="0.01"></label>
+            <label>min (cbm/h)<input id="machineMin" type="number" step="0.1"></label>
+            <label>max (cbm/h)<input id="machineMax" type="number" step="0.1"></label>
+          </div>
+          <label class="full">Projekt-Leistung (cbm/h)
+            <input id="machineProjectQ" type="range" min="0" max="100" step="0.1">
+            <span id="machineProjectQValue"></span>
+          </label>
+          <div class="help">Sichtbarkeit der Maschinen im Diagramm:</div>
+          <div id="machineList"></div>
         </div>
 
         <div style="margin-top: 10px;">
@@ -89,31 +94,101 @@
         <h1>Kosten pro m³ (X) vs. Leistung cbm/h (Y)</h1>
         <div class="sub">Rote Linie = VK €/m³</div>
       </div>
+      <div class="kpis">
+        <div>Umsatz/h: <span id="kpiRevenue" class="val">–</span></div>
+        <div>DB/h: <span id="kpiDB" class="val">–</span></div>
+      </div>
       <div id="chart"></div>
     </div>
   </div>
 
 <script>
-function num(id){ return parseFloat(document.getElementById(id).value || "0"); }
+function num(id){ return parseFloat(document.getElementById(id).value || '0'); }
 function bool(id){ return document.getElementById(id).checked; }
 
-function costPerM3(q, machineHourly, personalHourly, includePersonal, hoursPerDay, fixedDaily, includeFixed, efficiency){
-  const hourly = Number(machineHourly) + (includePersonal ? Number(personalHourly) : 0);
-  const fixedPerHour = includeFixed ? Number(fixedDaily) / Number(hoursPerDay || 1) : 0;
-  const perHour = hourly + fixedPerHour;
+const fmt2 = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function costPerM3(q, machineHourly, personalHourly, efficiency){
+  const perHour = Number(machineHourly) + Number(personalHourly);
   return perHour / (Number(q) * Number(efficiency || 1));
 }
 
-function computeSeries(qmin, qmax, machineHourly, settings, includeProjectFixedInChart, projectFixedPerM3){
+function computeSeries(qmin, qmax, machineHourly, personalHourly, efficiency, includeProjectFixedInChart, projectFixedPerM3){
   const step = Math.max(0.1, (qmax - qmin) / 800);
-  const xs = [], ys = [];
+  const xs = [], ys = [], texts = [];
   for(let q = qmin; q <= qmax + 1e-9; q = Math.round((q + step)*10000)/10000){
-    let x = costPerM3(q, machineHourly, settings.personalHourly, settings.includePersonal, settings.hoursPerDay, settings.fixedDaily, settings.includeFixed, settings.efficiency);
+    let x = costPerM3(q, machineHourly, personalHourly, efficiency);
     if (includeProjectFixedInChart) x += projectFixedPerM3;
     xs.push(x);
     ys.push(q);
+    texts.push(`Kosten: ${fmt2.format(x)} €<br>Leistung: ${fmt2.format(q)} cbm/h`);
   }
-  return { xs, ys };
+  return { xs, ys, texts };
+}
+
+const machines = [
+  { id: 'm15', name: '15t', hourly: 38.84, min: 2.4, max: 100, show: true, projectQ: 2.4 },
+  { id: 'm20', name: '20t', hourly: 42.53, min: 3.0, max: 125, show: true, projectQ: 3.0 },
+  { id: 'm27', name: '27t', hourly: 58.03, min: 3.6, max: 150, show: true, projectQ: 3.6 },
+];
+
+function getSelectedMachine(){
+  const sel = document.getElementById('machineSelect');
+  return machines.find(m => m.id === sel.value) || machines[0];
+}
+
+function renderMachineSelect(){
+  const sel = document.getElementById('machineSelect');
+  sel.innerHTML = '';
+  for(const m of machines){
+    const opt = document.createElement('option');
+    opt.value = m.id; opt.textContent = m.name;
+    sel.appendChild(opt);
+  }
+  if(!sel.value && machines[0]) sel.value = machines[0].id;
+}
+
+function renderMachineList(){
+  const cont = document.getElementById('machineList');
+  cont.innerHTML = '';
+  for(const m of machines){
+    const id = `show_${m.id}`;
+    const label = document.createElement('label');
+    label.style.display = 'block';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.id = id; cb.checked = m.show;
+    cb.addEventListener('change', () => { m.show = cb.checked; update(); });
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(` ${m.name}`));
+    cont.appendChild(label);
+  }
+}
+
+function loadSelectedMachineIntoForm(){
+  const m = getSelectedMachine();
+  if(!m) return;
+  const hourly = document.getElementById('machineHourly');
+  const min = document.getElementById('machineMin');
+  const max = document.getElementById('machineMax');
+  const q = document.getElementById('machineProjectQ');
+  const qv = document.getElementById('machineProjectQValue');
+  hourly.value = m.hourly;
+  min.value = m.min;
+  max.value = m.max;
+  q.min = m.min; q.max = m.max; q.value = m.projectQ;
+  qv.textContent = fmt2.format(m.projectQ) + ' cbm/h';
+}
+
+function addMachine(){
+  const name = prompt('Name der Maschine (z. B. 35t):', 'Neue Maschine');
+  if(!name) return;
+  const id = 'm' + Math.random().toString(36).slice(2,8);
+  machines.push({ id, name, hourly: 0, min: 1, max: 100, show: true, projectQ: 1 });
+  renderMachineSelect();
+  renderMachineList();
+  document.getElementById('machineSelect').value = id;
+  loadSelectedMachineIntoForm();
+  update();
 }
 
 function update(){
@@ -123,27 +198,17 @@ function update(){
     projectFixed: num('projectFixed'),
     includeProjectFixedInChart: bool('includeProjectFixedInChart'),
     personalHourly: num('personalHourly'),
-    includePersonal: bool('includePersonal'),
     hoursPerDay: num('hoursPerDay'),
-    fixedDaily: num('fixedDaily'),
-    includeFixed: bool('includeFixed'),
     efficiency: num('efficiency'),
-    m15: num('m15'), m20: num('m20'), m27: num('m27'),
-    m15min: num('m15min'), m15max: num('m15max'),
-    m20min: num('m20min'), m20max: num('m20max'),
-    m27min: num('m27min'), m27max: num('m27max'),
   };
   const projectFixedPerM3 = settings.projectVolume > 0 ? settings.projectFixed / settings.projectVolume : 0;
 
-  const s15 = computeSeries(settings.m15min, settings.m15max, settings.m15, settings, settings.includeProjectFixedInChart, projectFixedPerM3);
-  const s20 = computeSeries(settings.m20min, settings.m20max, settings.m20, settings, settings.includeProjectFixedInChart, projectFixedPerM3);
-  const s27 = computeSeries(settings.m27min, settings.m27max, settings.m27, settings, settings.includeProjectFixedInChart, projectFixedPerM3);
-
-  const traces = [
-    { x: s15.xs, y: s15.ys, name: '15t', mode: 'lines', line: { width: 3 } },
-    { x: s20.xs, y: s20.ys, name: '20t', mode: 'lines', line: { width: 3 } },
-    { x: s27.xs, y: s27.ys, name: '27t', mode: 'lines', line: { width: 3 } },
-  ];
+  const visible = machines.filter(m => m.show);
+  const traces = [];
+  for(const m of visible){
+    const s = computeSeries(m.min, m.max, m.hourly, settings.personalHourly, settings.efficiency, settings.includeProjectFixedInChart, projectFixedPerM3);
+    traces.push({ x: s.xs, y: s.ys, text: s.texts, hovertemplate: '%{text}<extra>%{fullData.name}</extra>', name: m.name, mode: 'lines', line: { width: 3 } });
+  }
 
   let xmin = Infinity, xmax = -Infinity;
   for(const t of traces){
@@ -152,10 +217,13 @@ function update(){
   if(!isFinite(xmin) || !isFinite(xmax)){ xmin = 0; xmax = 1; }
   const lo = Math.floor(xmin);
   const hi = Math.ceil(xmax);
+  const tickvals = [];
+  for(let v=lo; v<=hi; v++){ tickvals.push(v); }
+  const ticktext = tickvals.map(v => fmt2.format(v));
 
   const layout = {
     margin: { t: 10, r: 30, b: 50, l: 60 },
-    xaxis: { title: 'Kosten [€/m³]', tick0: lo, dtick: 1, range: [lo, hi] },
+    xaxis: { title: 'Kosten [€/m³]', tickmode: 'array', tickvals, ticktext, range: [lo, hi] },
     yaxis: { title: 'Leistung [cbm/h]' },
     hovermode: 'closest',
     shapes: [
@@ -165,43 +233,46 @@ function update(){
   };
 
   Plotly.react('chart', traces, layout, {responsive: true, displayModeBar: true});
+  updateKpis();
+}
+
+function updateKpis(){
+  const m = getSelectedMachine();
+  if(!m){ document.getElementById('kpiRevenue').textContent = '–'; document.getElementById('kpiDB').textContent = '–'; return; }
+  const salePrice = num('salePrice');
+  const personalHourly = num('personalHourly');
+  const revenuePerHour = salePrice * m.projectQ;
+  const costPerHour = m.hourly + personalHourly;
+  const dbPerHour = revenuePerHour - costPerHour;
+  document.getElementById('kpiRevenue').textContent = fmt2.format(revenuePerHour) + ' €';
+  document.getElementById('kpiDB').textContent = fmt2.format(dbPerHour) + ' €';
 }
 
 function exportCSV(){
-  const settings = {
-    personalHourly: num('personalHourly'),
-    includePersonal: bool('includePersonal'),
-    hoursPerDay: num('hoursPerDay'),
-    fixedDaily: num('fixedDaily'),
-    includeFixed: bool('includeFixed'),
-    efficiency: num('efficiency'),
-    includeProjectFixedInChart: bool('includeProjectFixedInChart'),
-    projectFixedPerM3: (num('projectVolume')>0) ? (num('projectFixed')/num('projectVolume')) : 0,
-    m15: num('m15'), m20: num('m20'), m27: num('m27'),
-    m15min: num('m15min'), m15max: num('m15max'),
-    m20min: num('m20min'), m20max: num('m20max'),
-    m27min: num('m27min'), m27max: num('m27max'),
-  };
-  function series(min, max, hourly){
-    const step = Math.max(0.1, (max - min) / 800);
+  const salePrice = num('salePrice'); // not used but kept for context
+  const projectVolume = num('projectVolume');
+  const projectFixedPerM3 = projectVolume > 0 ? num('projectFixed') / projectVolume : 0;
+  const includeProjectFixedInChart = bool('includeProjectFixedInChart');
+  const personalHourly = num('personalHourly');
+  const efficiency = num('efficiency');
+  const visible = machines.filter(m => m.show);
+  const headers = ['cbm/h', ...visible.map(m => `${m.name} €/m³`)];
+  const series = visible.map(m => {
+    const step = Math.max(0.1, (m.max - m.min) / 800);
     const rows = [];
-    for(let q = min; q <= max + 1e-9; q = Math.round((q + step)*10000)/10000){
-      let x = costPerM3(q, hourly, settings.personalHourly, settings.includePersonal, settings.hoursPerDay, settings.fixedDaily, settings.includeFixed, settings.efficiency);
-      if (settings.includeProjectFixedInChart) x += settings.projectFixedPerM3;
+    for(let q = m.min; q <= m.max + 1e-9; q = Math.round((q + step)*10000)/10000){
+      let x = costPerM3(q, m.hourly, personalHourly, efficiency);
+      if (includeProjectFixedInChart) x += projectFixedPerM3;
       rows.push([q, x]);
     }
     return rows;
-  }
-  const s15 = series(settings.m15min, settings.m15max, settings.m15);
-  const s20 = series(settings.m20min, settings.m20max, settings.m20);
-  const s27 = series(settings.m27min, settings.m27max, settings.m27);
-  let csv = "cbm/h,15t €/m³,20t €/m³,27t €/m³\n";
-  for(let i=0;i<Math.max(s15.length, s20.length, s27.length);i++){
-    const q = (s15[i]||s20[i]||s27[i]||[null])[0] ?? "";
-    const c15 = s15[i]?.[1] ?? "";
-    const c20 = s20[i]?.[1] ?? "";
-    const c27 = s27[i]?.[1] ?? "";
-    csv += `${q},${c15},${c20},${c27}\n`;
+  });
+  let csv = headers.join(',') + '\n';
+  const maxLen = Math.max(...series.map(s => s.length), 0);
+  for(let i=0;i<maxLen;i++){
+    const q = series[0]?.[i]?.[0] ?? '';
+    const row = [q, ...series.map(s => s?.[i]?.[1] ?? '')];
+    csv += row.join(',') + '\n';
   }
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
   const url = URL.createObjectURL(blob);
@@ -211,12 +282,27 @@ function exportCSV(){
 }
 
 function bind(){
-  const ids = ['salePrice','projectVolume','projectFixed','includeProjectFixedInChart','personalHourly','includePersonal','hoursPerDay','fixedDaily','includeFixed','efficiency','m15','m20','m27','m15min','m15max','m20min','m20max','m27min','m27max'];
-  for(const id of ids){
-    document.getElementById(id).addEventListener('input', update);
-    document.getElementById(id).addEventListener('change', update);
-  }
+  // global settings
+  ['salePrice','projectVolume','projectFixed','includeProjectFixedInChart','personalHourly','hoursPerDay','efficiency']
+    .forEach(id => {
+      const el = document.getElementById(id);
+      el.addEventListener('input', update);
+      el.addEventListener('change', update);
+    });
+
+  // machines ui
+  document.getElementById('addMachineBtn').addEventListener('click', addMachine);
+  document.getElementById('machineSelect').addEventListener('change', () => { loadSelectedMachineIntoForm(); updateKpis(); });
+  document.getElementById('machineHourly').addEventListener('input', (e) => { const m = getSelectedMachine(); if(m){ m.hourly = Number(e.target.value||0); update(); } });
+  document.getElementById('machineMin').addEventListener('input', (e) => { const m = getSelectedMachine(); if(m){ m.min = Number(e.target.value||0); if(m.projectQ < m.min) m.projectQ = m.min; loadSelectedMachineIntoForm(); update(); } });
+  document.getElementById('machineMax').addEventListener('input', (e) => { const m = getSelectedMachine(); if(m){ m.max = Number(e.target.value||0); if(m.projectQ > m.max) m.projectQ = m.max; loadSelectedMachineIntoForm(); update(); } });
+  document.getElementById('machineProjectQ').addEventListener('input', (e) => { const m = getSelectedMachine(); if(m){ m.projectQ = Number(e.target.value||0); document.getElementById('machineProjectQValue').textContent = fmt2.format(m.projectQ) + ' cbm/h'; updateKpis(); } });
+
   document.getElementById('exportBtn').addEventListener('click', exportCSV);
+
+  renderMachineSelect();
+  renderMachineList();
+  loadSelectedMachineIntoForm();
   update();
 }
 
