@@ -241,7 +241,7 @@ function update(){
   const layout = {
     margin: { t: 10, r: 30, b: 50, l: 60 },
     xaxis: { title: 'Kosten [€/m³]', tickmode: 'array', tickvals, ticktext, range: [lo, hi] },
-    yaxis: { title: 'Leistung [cbm/h]' },
+    yaxis: { title: 'Leistung [cbm/h]', tick0: 0, dtick: 10 },
     hovermode: 'closest',
     shapes: [
       { type: 'line', x0: settings.salePrice, x1: settings.salePrice, y0: 0, y1: 1, xref: 'x', yref: 'paper', line: { dash: 'dash', width: 2, color: '#ef4444' } }
