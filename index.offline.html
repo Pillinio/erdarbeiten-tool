@@ -50,7 +50,7 @@
           <div class="group-title">Projekt</div>
           <div class="row">
             <label>€/cbm Aushub<input id="salePrice" type="number" step="0.01" value="1.5"></label>
-            <label>Volumen (cbm)<input id="projectVolume" type="number" step="1" value="100000"></label>
+            <label>Volumen (cbm)<input id="projectVolume" type="text" inputmode="numeric" value="100000"></label>
             <label class="full">Projektfixkosten (€)<input id="projectFixed" type="number" step="1" value="0"></label>
           </div>
           <label><input id="includeProjectFixedInChart" type="checkbox"> Chart inkl. Projektfixkosten</label>
@@ -100,7 +100,7 @@
         <h1>Kosten pro m³ (X) vs. Leistung cbm/h (Y)</h1>
         <div class="sub">Rote Linie = VK €/m³</div>
       </div>
-      <div class="kpis">
+      <div class="kpis" id="kpiBar" style="display:flex;">
         <div>Umsatz/h: <span id="kpiRevenue" class="val">–</span></div>
         <div>DB/h: <span id="kpiDB" class="val">–</span></div>
       </div>
@@ -200,7 +200,13 @@ function addMachine(){
 function update(){
   const settings = {
     salePrice: num('salePrice'),
-    projectVolume: num('projectVolume'),
+    projectVolume: (function(){
+      const raw = document.getElementById('projectVolume').value.trim();
+      const norm = raw.replace(/\./g, '').replace(/,/g, '.');
+      const v = parseFloat(norm || '0');
+      if(!isFinite(v)) return 0;
+      return v;
+    })(),
     projectFixed: num('projectFixed'),
     includeProjectFixedInChart: bool('includeProjectFixedInChart'),
     personalHourly: num('personalHourly'),
@@ -244,7 +250,8 @@ function update(){
 
 function updateKpis(){
   const m = getSelectedMachine();
-  if(!m){ document.getElementById('kpiRevenue').textContent = '–'; document.getElementById('kpiDB').textContent = '–'; return; }
+  if(!m){ document.getElementById('kpiRevenue').textContent = '–'; document.getElementById('kpiDB').textContent = '–'; document.getElementById('kpiBar').style.display='none'; return; }
+  document.getElementById('kpiBar').style.display='flex';
   const salePrice = num('salePrice');
   const personalHourly = num('personalHourly');
   const revenuePerHour = salePrice * m.projectQ;
@@ -295,6 +302,15 @@ function bind(){
       el.addEventListener('input', update);
       el.addEventListener('change', update);
     });
+
+  // format Volumen with de-DE grouping while typing (best-effort)
+  const volEl = document.getElementById('projectVolume');
+  volEl.addEventListener('blur', () => {
+    const raw = volEl.value.trim();
+    const norm = raw.replace(/\./g, '').replace(/,/g, '.');
+    const v = parseFloat(norm || '0');
+    if(isFinite(v)) volEl.value = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 }).format(v);
+  });
 
   // machines ui
   document.getElementById('addMachineBtn').addEventListener('click', addMachine);
