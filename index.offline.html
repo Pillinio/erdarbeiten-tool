@@ -229,6 +229,7 @@ function update(){
   const projectFixedPerM3 = settings.projectVolume > 0 ? settings.projectFixed / settings.projectVolume : 0;
 
   const visible = machines.filter(m => m.show);
+  const selected = getSelectedMachine();
   const traces = [];
   for(const m of visible){
     const s = computeSeries(m.min, m.max, m.hourly, settings.personalHourly, settings.efficiency, settings.includeProjectFixedInChart, projectFixedPerM3);
@@ -246,6 +247,7 @@ function update(){
   for(let v=lo; v<=hi; v++){ tickvals.push(v); }
   const ticktext = tickvals.map(v => fmt2.format(v));
 
+  const perHourSelected = selected ? (Number(selected.hourly) + Number(settings.personalHourly)) : null;
   const layout = {
     margin: { t: 10, r: 30, b: 50, l: 60 },
     xaxis: { title: 'Kosten [€/m³]', tickmode: 'array', tickvals, ticktext, range: [lo, hi] },
@@ -255,6 +257,10 @@ function update(){
       { type: 'line', x0: settings.salePrice, x1: settings.salePrice, y0: 0, y1: 1, xref: 'x', yref: 'paper', line: { dash: 'dash', width: 2, color: '#ef4444' } }
     ],
     legend: { orientation: 'h', x: 0, y: 1.05 },
+    annotations: perHourSelected != null ? [
+      { xref: 'paper', yref: 'paper', x: 0.01, y: 0.98, xanchor: 'left', yanchor: 'top',
+        text: `Kosten/h (${selected.name}): <b>${fmt2.format(perHourSelected)} €</b>`, showarrow: false, align: 'left', font: { size: 12 } }
+    ] : []
   };
 
   Plotly.react('chart', traces, layout, {responsive: true, displayModeBar: true});
