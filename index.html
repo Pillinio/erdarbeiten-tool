@@ -49,6 +49,9 @@
           <div class="group-title">Projekt</div>
           <div class="row">
             <label>€/cbm Aushub<input id="salePrice" type="number" step="0.01" value="1.5"></label>
+            <label>Entsorgung (€/cbm)<input id="disposalPerM3" type="number" step="0.01" value="0"></label>
+          </div>
+          <div class="row">
             <label>Volumen (cbm)<input id="projectVolume" type="text" inputmode="numeric" value="100000"></label>
             <label class="full">Projektfixkosten (€)<input id="projectFixed" type="number" step="1" value="0"></label>
           </div>
@@ -75,7 +78,9 @@
             <button id="addMachineBtn" class="btn btn-small" type="button">Maschine hinzufügen</button>
           </div>
           <div class="row">
-            <label>€/h Gerät<input id="machineHourly" type="number" step="0.01"></label>
+            <label class="full">€/h Gerät<input id="machineHourly" type="number" step="0.01"></label>
+          </div>
+          <div class="row">
             <label>min (cbm/h)<input id="machineMin" type="number" step="0.1"></label>
             <label>max (cbm/h)<input id="machineMax" type="number" step="0.1"></label>
           </div>
@@ -200,6 +205,7 @@ function addMachine(){
 function update(){
   const settings = {
     salePrice: num('salePrice'),
+    disposalPerM3: num('disposalPerM3'),
     projectVolume: (function(){
       const raw = document.getElementById('projectVolume').value.trim();
       const norm = raw.replace(/\./g, '').replace(/,/g, '.');
@@ -243,7 +249,7 @@ function update(){
     yaxis: { title: 'Leistung [cbm/h]', tick0: 0, dtick: 10 },
     hovermode: 'closest',
     shapes: [
-      { type: 'line', x0: settings.salePrice, x1: settings.salePrice, y0: 0, y1: 1, xref: 'x', yref: 'paper', line: { dash: 'dash', width: 2, color: '#ef4444' } }
+      { type: 'line', x0: (settings.salePrice + settings.disposalPerM3), x1: (settings.salePrice + settings.disposalPerM3), y0: 0, y1: 1, xref: 'x', yref: 'paper', line: { dash: 'dash', width: 2, color: '#ef4444' } }
     ],
     legend: { orientation: 'h', x: 0, y: 1.05 },
     annotations: perHourSelected != null ? [
@@ -281,7 +287,7 @@ function updateKpis(){
   const m = getSelectedMachine();
   if(!m){ document.getElementById('kpiRevenue').textContent = '–'; document.getElementById('kpiDB').textContent = '–'; document.getElementById('kpiBar').style.display='none'; return; }
   document.getElementById('kpiBar').style.display='flex';
-  const salePrice = num('salePrice');
+  const salePrice = num('salePrice') + num('disposalPerM3');
   const personalHourly = num('personalHourly');
   const revenuePerHour = salePrice * m.projectQ;
   const costPerHour = m.hourly + personalHourly;
@@ -363,6 +369,7 @@ function saveState(){
   try{
     const state = {
       salePrice: num('salePrice'),
+      disposalPerM3: num('disposalPerM3'),
       projectVolume: document.getElementById('projectVolume').value,
       projectFixed: num('projectFixed'),
       includeProjectFixedInChart: bool('includeProjectFixedInChart'),
@@ -381,6 +388,7 @@ function loadState(){
     if(!raw) return;
     const s = JSON.parse(raw);
     document.getElementById('salePrice').value = s.salePrice ?? 1.5;
+    document.getElementById('disposalPerM3').value = s.disposalPerM3 ?? 0;
     document.getElementById('projectVolume').value = s.projectVolume ?? '100000';
     document.getElementById('projectFixed').value = s.projectFixed ?? 0;
     document.getElementById('includeProjectFixedInChart').checked = !!s.includeProjectFixedInChart;
