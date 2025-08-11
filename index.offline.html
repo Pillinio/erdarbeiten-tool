@@ -109,6 +109,7 @@
       </div>
       <div class="kpis" id="kpiBar" style="display:flex;">
         <div>Umsatz/h: <span id="kpiRevenue" class="val">–</span></div>
+        <div>Kosten/h: <span id="kpiCost" class="val">–</span></div>
         <div>DB/h: <span id="kpiDB" class="val">–</span></div>
       </div>
       <div id="chart"></div>
@@ -130,11 +131,12 @@ function computeSeries(qmin, qmax, machineHourly, personalHourly, efficiency, in
   const step = Math.max(0.1, (qmax - qmin) / 800);
   const xs = [], ys = [], texts = [];
   for(let q = qmin; q <= qmax + 1e-9; q = Math.round((q + step)*10000)/10000){
-    let x = costPerM3(q, machineHourly, personalHourly, efficiency);
+    const perHour = Number(machineHourly) + Number(personalHourly);
+    let x = perHour / (Number(q) * Number(efficiency || 1));
     if (includeProjectFixedInChart) x += projectFixedPerM3;
     xs.push(x);
     ys.push(q);
-    texts.push(`Kosten: ${fmt2.format(x)} €<br>Leistung: ${fmt2.format(q)} cbm/h`);
+    texts.push(`Kosten: ${fmt2.format(x)} € pro m³<br>Leistung: ${fmt2.format(q)} cbm/h<br>Kosten/h: ${fmt2.format(perHour)} €`);
   }
   return { xs, ys, texts };
 }
@@ -269,6 +271,7 @@ function updateKpis(){
   const costPerHour = m.hourly + personalHourly;
   const dbPerHour = revenuePerHour - costPerHour;
   document.getElementById('kpiRevenue').textContent = fmt2.format(revenuePerHour) + ' €';
+  document.getElementById('kpiCost').textContent = fmt2.format(costPerHour) + ' €';
   document.getElementById('kpiDB').textContent = fmt2.format(dbPerHour) + ' €';
 }
 
