@@ -36,6 +36,7 @@
   .range-row input[type="range"] { flex: 1; }
   .minmax { width:64px; text-align:center; font-size:12px; color:#64748b; }
   .btn-small { padding:6px 10px; font-size:12px; }
+  .btn-ghost { background:transparent; color:var(--accent); border:1px solid var(--border); }
 </style>
 <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
 </head>
@@ -84,8 +85,9 @@
           <div id="machineList"></div>
         </div>
 
-        <div style="margin-top: 10px;">
+        <div style="margin-top: 10px; display:flex; gap:8px; align-items:center;">
           <button id="exportBtn" class="btn">CSV exportieren</button>
+          <button id="resetBtn" class="btn btn-small btn-ghost" type="button">Zurücksetzen</button>
           <div class="help">Tipp: Rechtsklick → „Link speichern unter…“, falls der Browser den Download blockiert.</div>
         </div>
       </div>
@@ -135,6 +137,8 @@ const machines = [
   { id: 'm20', name: '20t', hourly: 42.53, min: 3.0, max: 125, show: true, projectQ: 3.0 },
   { id: 'm27', name: '27t', hourly: 58.03, min: 3.6, max: 150, show: true, projectQ: 3.6 },
 ];
+
+const STORAGE_KEY = 'erdarbeiten_settings_v1';
 
 function getSelectedMachine(){
   const sel = document.getElementById('machineSelect');
@@ -250,6 +254,7 @@ function update(){
 
   Plotly.react('chart', traces, layout, {responsive: true, displayModeBar: true});
   updateKpis();
+  saveState();
 }
 
 function renderProjectSliders(){
@@ -345,6 +350,7 @@ function bind(){
   document.getElementById('machineMax').addEventListener('input', (e) => { const m = getSelectedMachine(); if(m){ m.max = Number(e.target.value||0); if(m.projectQ > m.max) m.projectQ = m.max; renderProjectSliders(); update(); } });
 
   document.getElementById('exportBtn').addEventListener('click', exportCSV);
+  document.getElementById('resetBtn').addEventListener('click', resetState);
 
   renderMachineSelect();
   renderMachineList();
@@ -353,7 +359,48 @@ function bind(){
   update();
 }
 
+function saveState(){
+  try{
+    const state = {
+      salePrice: num('salePrice'),
+      projectVolume: document.getElementById('projectVolume').value,
+      projectFixed: num('projectFixed'),
+      includeProjectFixedInChart: bool('includeProjectFixedInChart'),
+      personalHourly: num('personalHourly'),
+      hoursPerDay: num('hoursPerDay'),
+      efficiency: num('efficiency'),
+      machines
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }catch(e){ /* ignore */ }
+}
+
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return;
+    const s = JSON.parse(raw);
+    document.getElementById('salePrice').value = s.salePrice ?? 1.5;
+    document.getElementById('projectVolume').value = s.projectVolume ?? '100000';
+    document.getElementById('projectFixed').value = s.projectFixed ?? 0;
+    document.getElementById('includeProjectFixedInChart').checked = !!s.includeProjectFixedInChart;
+    document.getElementById('personalHourly').value = s.personalHourly ?? 22;
+    document.getElementById('hoursPerDay').value = s.hoursPerDay ?? 8;
+    document.getElementById('efficiency').value = s.efficiency ?? 1.0;
+    if(Array.isArray(s.machines) && s.machines.length){
+      machines.length = 0;
+      for(const m of s.machines){ machines.push(m); }
+    }
+  }catch(e){ /* ignore */ }
+}
+
+function resetState(){
+  localStorage.removeItem(STORAGE_KEY);
+  location.reload();
+}
+
 window.addEventListener('DOMContentLoaded', bind);
+window.addEventListener('DOMContentLoaded', () => { loadState(); renderMachineSelect(); renderMachineList(); renderProjectSliders(); update(); });
 </script>
 </body>
 </html>
