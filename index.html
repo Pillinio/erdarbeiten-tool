@@ -78,13 +78,8 @@
             <label>min (cbm/h)<input id="machineMin" type="number" step="0.1"></label>
             <label>max (cbm/h)<input id="machineMax" type="number" step="0.1"></label>
           </div>
-          <label class="full">Projekt-Leistung (cbm/h)</label>
-          <div class="range-row">
-            <div class="minmax" id="lblMin">–</div>
-            <input id="machineProjectQ" type="range" min="0" max="100" step="0.1">
-            <div class="minmax" id="lblMax">–</div>
-          </div>
-          <div class="help" id="machineProjectQValue">–</div>
+          <label class="full">Projekt-Leistung (cbm/h) je Maschine</label>
+          <div id="projectSliders"></div>
           <div class="help">Sichtbarkeit der Maschinen im Diagramm:</div>
           <div id="machineList"></div>
         </div>
@@ -166,7 +161,7 @@ function renderMachineList(){
     label.style.display = 'block';
     const cb = document.createElement('input');
     cb.type = 'checkbox'; cb.id = id; cb.checked = m.show;
-    cb.addEventListener('change', () => { m.show = cb.checked; update(); });
+    cb.addEventListener('change', () => { m.show = cb.checked; renderProjectSliders(); update(); });
     label.appendChild(cb);
     label.appendChild(document.createTextNode(` ${m.name}`));
     cont.appendChild(label);
@@ -179,17 +174,10 @@ function loadSelectedMachineIntoForm(){
   const hourly = document.getElementById('machineHourly');
   const min = document.getElementById('machineMin');
   const max = document.getElementById('machineMax');
-  const q = document.getElementById('machineProjectQ');
-  const qv = document.getElementById('machineProjectQValue');
-  const lblMin = document.getElementById('lblMin');
-  const lblMax = document.getElementById('lblMax');
   hourly.value = m.hourly;
   min.value = m.min;
   max.value = m.max;
-  q.min = m.min; q.max = m.max; q.value = m.projectQ;
-  qv.textContent = fmt2.format(m.projectQ) + ' cbm/h';
-  lblMin.textContent = fmt2.format(m.min);
-  lblMax.textContent = fmt2.format(m.max);
+  renderProjectSliders();
 }
 
 function addMachine(){
@@ -201,6 +189,7 @@ function addMachine(){
   renderMachineList();
   document.getElementById('machineSelect').value = id;
   loadSelectedMachineIntoForm();
+  renderProjectSliders();
   update();
 }
 
@@ -223,6 +212,8 @@ function update(){
   const projectFixedPerM3 = settings.projectVolume > 0 ? settings.projectFixed / settings.projectVolume : 0;
 
   const visible = machines.filter(m => m.show);
+  // keep selected machine projectQ in case slider hidden/shown
+  if(visible.length === 0 && machines.length) { /* nothing visible */ }
   const selected = getSelectedMachine();
   const traces = [];
   for(const m of visible){
@@ -259,6 +250,26 @@ function update(){
 
   Plotly.react('chart', traces, layout, {responsive: true, displayModeBar: true});
   updateKpis();
+}
+
+function renderProjectSliders(){
+  const wrap = document.getElementById('projectSliders');
+  wrap.innerHTML = '';
+  for(const m of machines){
+    if(!m.show) continue;
+    const row = document.createElement('div');
+    row.className = 'range-row';
+    const minLbl = document.createElement('div'); minLbl.className = 'minmax'; minLbl.textContent = fmt2.format(m.min);
+    const maxLbl = document.createElement('div'); maxLbl.className = 'minmax'; maxLbl.textContent = fmt2.format(m.max);
+    const slider = document.createElement('input'); slider.type = 'range'; slider.min = m.min; slider.max = m.max; slider.step = 0.1; slider.value = m.projectQ;
+    const help = document.createElement('div'); help.className = 'help'; help.textContent = `${m.name}: ${fmt2.format(m.projectQ)} cbm/h`;
+    slider.addEventListener('input', (e) => { m.projectQ = Number(e.target.value||0); help.textContent = `${m.name}: ${fmt2.format(m.projectQ)} cbm/h`; updateKpis(); });
+    const line = document.createElement('div'); line.style.display='flex'; line.style.alignItems='center'; line.style.gap='10px';
+    line.appendChild(minLbl); line.appendChild(slider); line.appendChild(maxLbl);
+    row.appendChild(line);
+    row.appendChild(help);
+    wrap.appendChild(row);
+  }
 }
 
 function updateKpis(){
@@ -329,18 +340,16 @@ function bind(){
   // machines ui
   document.getElementById('addMachineBtn').addEventListener('click', addMachine);
   document.getElementById('machineSelect').addEventListener('change', () => { loadSelectedMachineIntoForm(); updateKpis(); });
-  document.getElementById('machineHourly').addEventListener('input', (e) => { const m = getSelectedMachine(); if(m){ m.hourly = Number(e.target.value||0); update(); } });
-  document.getElementById('machineMin').addEventListener('input', (e) => { const m = getSelectedMachine(); if(m){ m.min = Number(e.target.value||0); if(m.projectQ < m.min) m.projectQ = m.min; loadSelectedMachineIntoForm(); update(); } });
-  document.getElementById('machineMax').addEventListener('input', (e) => { const m = getSelectedMachine(); if(m){ m.max = Number(e.target.value||0); if(m.projectQ > m.max) m.projectQ = m.max; loadSelectedMachineIntoForm(); update(); } });
-  document.getElementById('machineProjectQ').addEventListener('input', (e) => { const m = getSelectedMachine(); if(m){ m.projectQ = Number(e.target.value||0); document.getElementById('machineProjectQValue').textContent = fmt2.format(m.projectQ) + ' cbm/h'; updateKpis(); } });
-  document.getElementById('machineMin').addEventListener('blur', () => { const m = getSelectedMachine(); if(m){ document.getElementById('lblMin').textContent = fmt2.format(m.min); }});
-  document.getElementById('machineMax').addEventListener('blur', () => { const m = getSelectedMachine(); if(m){ document.getElementById('lblMax').textContent = fmt2.format(m.max); }});
+  document.getElementById('machineHourly').addEventListener('input', (e) => { const m = getSelectedMachine(); if(m){ m.hourly = Number(e.target.value||0); renderProjectSliders(); update(); } });
+  document.getElementById('machineMin').addEventListener('input', (e) => { const m = getSelectedMachine(); if(m){ m.min = Number(e.target.value||0); if(m.projectQ < m.min) m.projectQ = m.min; renderProjectSliders(); update(); } });
+  document.getElementById('machineMax').addEventListener('input', (e) => { const m = getSelectedMachine(); if(m){ m.max = Number(e.target.value||0); if(m.projectQ > m.max) m.projectQ = m.max; renderProjectSliders(); update(); } });
 
   document.getElementById('exportBtn').addEventListener('click', exportCSV);
 
   renderMachineSelect();
   renderMachineList();
   loadSelectedMachineIntoForm();
+  renderProjectSliders();
   update();
 }
 
