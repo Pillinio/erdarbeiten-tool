@@ -101,7 +101,7 @@
     <div class="panel chart-panel">
       <div class="header">
         <h1>Kosten pro m³ (X) vs. Leistung cbm/h (Y)</h1>
-        <div class="sub">Rote Linie = VK €/m³</div>
+        <div class="sub">Rote Linie = VK+Entsorgung €/m³</div>
       </div>
       <div class="kpis" id="kpiBar" style="display:flex;">
         <div>Umsatz/h: <span id="kpiRevenue" class="val">–</span></div>
@@ -252,10 +252,14 @@ function update(){
       { type: 'line', x0: (settings.salePrice + settings.disposalPerM3), x1: (settings.salePrice + settings.disposalPerM3), y0: 0, y1: 1, xref: 'x', yref: 'paper', line: { dash: 'dash', width: 2, color: '#ef4444' } }
     ],
     legend: { orientation: 'h', x: 0, y: 1.05 },
-    annotations: perHourSelected != null ? [
-      { xref: 'paper', yref: 'paper', x: 0.01, y: 0.98, xanchor: 'left', yanchor: 'top',
-        text: `Kosten/h (${selected.name}): <b>${fmt2.format(perHourSelected)} €</b>`, showarrow: false, align: 'left', font: { size: 12 } }
-    ] : []
+    annotations: [
+      ...(perHourSelected != null ? [
+        { xref: 'paper', yref: 'paper', x: 0.01, y: 0.98, xanchor: 'left', yanchor: 'top',
+          text: `Kosten/h (${selected.name}): <b>${fmt2.format(perHourSelected)} €</b>`, showarrow: false, align: 'left', font: { size: 12 } }
+      ] : []),
+      { xref: 'x', yref: 'paper', x: (settings.salePrice + settings.disposalPerM3), y: 1.02, xanchor: 'center', yanchor: 'bottom',
+        text: `VK+Entsorgung: <b>${fmt2.format(settings.salePrice + settings.disposalPerM3)} €</b>`, showarrow: false, font: { size: 12, color: '#ef4444' } }
+    ]
   };
 
   Plotly.react('chart', traces, layout, {responsive: true, displayModeBar: true});
